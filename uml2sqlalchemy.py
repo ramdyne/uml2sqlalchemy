@@ -501,10 +501,96 @@ class MyClass:
 
         return my_attributes
 
+
+    def _create_list_item_type(self, list_type_name, list_type_id, list_item_type_name):
+        print("Creating items list for list type %s with id %s and for item type %s" % (list_type_name, list_type_id, list_item_type_name))
+        global last_added_list_type_id
+        last_added_list_type_id += 1
+
+        new_list_items_name = "ListOf" + list_type_name + "Items"
+        print("New items list name = %s" % (new_list_items_name))
+
+        # Create a list_item_class
+        list_class = MyClass()
+        list_class.set_name(new_list_items_name)
+        list_class.class_id = str(last_added_list_type_id)
+
+        # The unique id for this list_items_type will be created automatically,
+        # but two other items need to be added per row:
+        # unique_id for the list_type and a unique_id towards an instance of the list_item_type
+
+        # Find the ID for the item type
+        list_item_type_id = find_id_for_type_name(list_item_type_name)
+
+        attributes = []
+
+        # Create an attribute for both
+        if list_type_id:
+            print("Creating list type attribute %s for type %s (%s)" % (list_type_name.lower(), list_type_name, list_type_id))
+            new_attribute = MyAttribute()
+            new_attribute.set_name(list_type_name.lower())
+            new_attribute.set_type_id(list_type_id)
+
+            attributes.append(new_attribute)
+
+        if list_item_type_id:
+            print("Creating list item type attribute %s for type %s (%s)" % (list_item_type_name.lower(), list_item_type_name, list_item_type_id))
+            new_attribute = MyAttribute()
+            new_attribute.set_name(list_item_type_name.lower())
+            new_attribute.set_type_id(list_item_type_id)
+
+            attributes.append(new_attribute)
+
+        list_class.attributes = attributes
+
+        # Add the class to the list
+        class_ids[list_class.class_id] = new_list_items_name
+        my_classes.append(list_class)
+
+    def _create_new_list(self, list_item_type_name, list_type_name):
+        """Create a new list type, create a list_item type linking a list identifier to a list item type. The list_item type contains a unique id and the id of the list content type"""
+        global last_added_list_type_id
+        last_added_list_type_id += 1
+        new_list_id = last_added_list_type_id
+
+        new_list_name = "ListOf" + list_type_name + "s"
+
+        # First create the list itself
+        # Create a Class representing the new list type with the newly increased id
+        # print "Creating new class %s at id %d" % (new_list_name, last_added_list_type_id)
+        list_class = MyClass()
+        list_class.set_name(new_list_name)
+        list_class.class_id = str(new_list_id)
+
+        attributes = []
+        new_attribute = MyAttribute()
+
+        # Add a name attribute of the String type
+        new_attribute.set_name(new_list_name.lower() + "_name")
+        # new_attribute.set_id(old_attribute_id)
+        # Find the type_id for "String"
+        string_type_id = find_id_for_type_name('String')
+        if string_type_id:
+            new_attribute.set_type_id(string_type_id)
+            attributes.append(new_attribute)
+            list_class.attributes = attributes
+            # Save the new class
+            class_ids[list_class.class_id] = new_list_name
+            my_classes.append(list_class)
+
+            # Create the list item class
+            self._create_list_item_type(new_list_name, str(new_list_id), list_item_type_name)
+
+            return last_added_list_type_id
+        else:
+            print("Can't find type ID for STRING, this shouldn't happen")
+
+        return None
+
     def resolve_many_constraints(self):
         for attribute_ in self.attributes:
             if attribute_.has_many_constraint() :
-                # print "%s has an attribute with a many constraint at %s : %s" % (self.class_name, attribute_.name, attribute_.type_name)
+                print "%s has an attribute with a many constraint at %s : %s" % (self.class_name, attribute_.name, attribute_.type_name)
 
                 # So this is a list type
                 # First create a list type name by adding List to the end of the attribute type name
@@ -516,61 +602,20 @@ class MyClass:
                 old_attribute_type_id = attribute_.type_id
                 old_attribute_type_name = attribute_.type_name
                 if list_type_id:
-                    # print "Rewriting existing base type information to new list type %s (id=%s)" % (new_list_name, list_type_id)
+                    print "Rewriting existing base type information to new list type %s (id=%s)" % (new_list_name, list_type_id)
                     attribute_.set_type_id(list_type_id)
                     attribute_.set_type_name(new_list_name)
                 else:
-                    # If not, increase the last added type id
-                    global last_added_list_type_id
-                    last_added_list_type_id += 1
-                    # Create a Class representing the new list type with the newly increased id
-                    # print "Creating new class %s at id %d" % (new_list_name, last_added_list_type_id)
-                    list_class = MyClass()
-                    list_class.set_name(new_list_name)
-                    list_class.class_id = str(last_added_list_type_id)
-                    # The primary ID will be added automatically, but need to add a name column to the list
-                    # and a link back from the original type to the list
-                    attributes = []
-                    new_attribute = MyAttribute()
-                    new_attribute.set_name(new_list_name.lower() + "_name")
-                    #new_attribute.set_id(old_attribute_id)
-                    # Find the type_id for "String"
-                    string_type_id = find_id_for_type_name('String')
-                    if string_type_id:
-                        new_attribute.set_type_id(string_type_id)
-                        attributes.append(new_attribute)
-                        list_class.attributes = attributes
-                        # Save the new class
-                        class_ids[list_class.class_id] = new_list_name
-                        my_classes.append(list_class)
+                    print "Creating new list type %s" % (new_list_name)
 
-                        # So a new "list" class has been created, but now the contents need to be made part of this list
-                        # The will receive a reference to this list. So each instance of the original type of this
-                        # attribute is "part" of a list
+                    list_type_id = self._create_new_list(old_attribute_type_name, attribute_.type_name)
 
-                        old_attribute_class = find_class_or_type(old_attribute_type_id)
-
-                        if old_attribute_class:
-                            # Add the list as an attrbute to the old type
-                            new_attribute = MyAttribute()
-                            new_attribute.set_name(new_list_name.lower())
-                            new_attribute.set_type_id(list_class.class_id)
-                            if isinstance(old_attribute_class, MyClass):
-                                old_attribute_class.attributes.append(new_attribute)
-                            elif isinstance(old_attribute_class, MyEnumerationType):
-                                print "Can't add a new thing to an ENUM list"
-                            else:
-                                old_attribute_class.attributes.append(new_attribute)
-                        else:
-                            print "Can't find the class (%s) to add a new link to the list to" % (old_attribute_type_name)
+                    if list_type_id:
+                        attribute_.set_type_id(list_type_id)
+                        attribute_.set_type_name(new_list_name)
 
                     else :
-                        print "Can't find type ID for STRING, this shouldn't happen"
-
-
-                    # And point the current attribute to the list
-                    # print "Finally setting attribute %s type from %s to %s" % (attribute_.name, attribute_.type_id, list_class.class_id)
-                    attribute_.set_type_id(list_class.class_id)
+                        print "Can't create a new list type? This should NEVER happen!"
 
 
 def parse_class_objects(elements):
@@ -818,8 +863,8 @@ def parse_associations(elements):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("infile", type=string, help="UML XML file to parse")
-    parser.add_argument("outfile", type=string, help="Name of the output Python file")
+    parser.add_argument("infile", help="UML XML file to parse")
+    parser.add_argument("outfile", help="Name of the output Python file")
     args = parser.parse_args()
 
     infile = args.infile
