@@ -289,8 +289,11 @@ class MyAttribute:
         result = False
         for constraint in self.constraints:
             if constraint.is_many_constraint():
+                print("Constraint %s is many constraint (%s)" % (constraint.name, constraint.value))
                 result = True
                 break
+            else:
+                print("Constraint %s is not a many constraint (%s)" % (constraint.name, constraint.value))
         return result
 
 
@@ -507,7 +510,7 @@ class MyClass:
         global last_added_list_type_id
         last_added_list_type_id += 1
 
-        new_list_items_name = "ListOf" + list_type_name + "Items"
+        new_list_items_name = list_type_name + "Items"
         print("New items list name = %s" % (new_list_items_name))
 
         # Create a list_item_class
@@ -588,6 +591,7 @@ class MyClass:
         return None
 
     def resolve_many_constraints(self):
+        print("Resolving many constraints on type %s" % (self.class_name))
         for attribute_ in self.attributes:
             if attribute_.has_many_constraint() :
                 print "%s has an attribute with a many constraint at %s : %s" % (self.class_name, attribute_.name, attribute_.type_name)
@@ -606,11 +610,12 @@ class MyClass:
                     attribute_.set_type_id(list_type_id)
                     attribute_.set_type_name(new_list_name)
                 else:
-                    print "Creating new list type %s" % (new_list_name)
+                    print("Creating new list type %s" % (new_list_name))
 
                     list_type_id = self._create_new_list(old_attribute_type_name, attribute_.type_name)
 
                     if list_type_id:
+                        print("Saving newly created list type %s (%d) as %s instead of type %s (%s)" % (new_list_name, list_type_id, attribute_.name, old_attribute_type_name, old_attribute_type_id))
                         attribute_.set_type_id(list_type_id)
                         attribute_.set_type_name(new_list_name)
 
@@ -655,6 +660,10 @@ class MyEnumerationType:
 
     def resolve_type_ids(self):
         # No need to resolve unique IDs within an ENUM. They don't have attributes that point to other types
+        pass
+
+    def resolve_many_constraints(self):
+        # No need for this for enumerations
         pass
 
     def __repr__(self):
@@ -708,6 +717,8 @@ class MyDataType:
 
         self.attributes = []
         self._parse_attributes(data_type)
+
+        print("Created datatype %s" % (self.name))
 
     def resolve_type_ids(self):
         for attribute_ in self.attributes:
@@ -832,6 +843,125 @@ class MyDataType:
 
         return result.encode('ascii', 'ignore')
 
+    def _create_list_item_type(self, list_type_name, list_type_id, list_item_type_name):
+        print("Creating items list for list type %s with id %s and for item type %s" % (list_type_name, list_type_id, list_item_type_name))
+        global last_added_list_type_id
+        last_added_list_type_id += 1
+
+        new_list_items_name = list_type_name + "Items"
+        print("New items list name = %s" % (new_list_items_name))
+
+        # Create a list_item_class
+        list_class = MyClass()
+        list_class.set_name(new_list_items_name)
+        list_class.class_id = str(last_added_list_type_id)
+
+        # The unique id for this list_items_type will be created automatically,
+        # but two other items need to be added per row:
+        # unique_id for the list_type and a unique_id towards an instance of the list_item_type
+
+        # Find the ID for the item type
+        list_item_type_id = find_id_for_type_name(list_item_type_name)
+
+        attributes = []
+
+        # Create an attribute for both
+        if list_type_id:
+            print("Creating list type attribute %s for type %s (%s)" % (list_type_name.lower(), list_type_name, list_type_id))
+            new_attribute = MyAttribute()
+            new_attribute.set_name(list_type_name.lower())
+            new_attribute.set_type_id(list_type_id)
+
+            attributes.append(new_attribute)
+
+        if list_item_type_id:
+            print("Creating list item type attribute %s for type %s (%s)" % (list_item_type_name.lower(), list_item_type_name, list_item_type_id))
+            new_attribute = MyAttribute()
+            new_attribute.set_name(list_item_type_name.lower())
+            new_attribute.set_type_id(list_item_type_id)
+
+            attributes.append(new_attribute)
+
+        list_class.attributes = attributes
+
+        # Add the class to the list
+        class_ids[list_class.class_id] = new_list_items_name
+        my_classes.append(list_class)
+
+    def _create_new_list(self, list_item_type_name, list_type_name):
+        """Create a new list type, create a list_item type linking a list identifier to a list item type. The list_item type contains a unique id and the id of the list content type"""
+        global last_added_list_type_id
+        last_added_list_type_id += 1
+        new_list_id = last_added_list_type_id
+
+        new_list_name = "ListOf" + list_type_name + "s"
+
+        # First create the list itself
+        # Create a Class representing the new list type with the newly increased id
+        # print "Creating new class %s at id %d" % (new_list_name, last_added_list_type_id)
+        list_class = MyClass()
+        list_class.set_name(new_list_name)
+        list_class.class_id = str(new_list_id)
+
+        attributes = []
+        new_attribute = MyAttribute()
+
+        # Add a name attribute of the String type
+        new_attribute.set_name(new_list_name.lower() + "_name")
+        # new_attribute.set_id(old_attribute_id)
+        # Find the type_id for "String"
+        string_type_id = find_id_for_type_name('String')
+        if string_type_id:
+            new_attribute.set_type_id(string_type_id)
+            attributes.append(new_attribute)
+            list_class.attributes = attributes
+            # Save the new class
+            class_ids[list_class.class_id] = new_list_name
+            my_classes.append(list_class)
+
+            # Create the list item class
+            self._create_list_item_type(new_list_name, str(new_list_id), list_item_type_name)
+
+            return last_added_list_type_id
+        else:
+            print("Can't find type ID for STRING, this shouldn't happen")
+
+        return None
+
+    def resolve_many_constraints(self):
+        print("Resolving many constraints on type %s" % (self.name))
+        for attribute_ in self.attributes:
+            if attribute_.has_many_constraint() :
+                print "%s has an attribute with a many constraint at %s : %s" % (self.name, attribute_.name, attribute_.type_name)
+
+                # So this is a list type
+                # First create a list type name by adding List to the end of the attribute type name
+                new_list_name = "ListOf" + attribute_.type_name + "s"
+
+                # And check whether it already exists, if so point the attribute type to the list instead of list item type
+                list_type_id = find_id_for_type_name(new_list_name)
+
+                old_attribute_type_id = attribute_.type_id
+                old_attribute_type_name = attribute_.type_name
+                if list_type_id:
+                    print "Rewriting existing base type information to new list type %s (id=%s)" % (new_list_name, list_type_id)
+                    attribute_.set_type_id(list_type_id)
+                    attribute_.set_type_name(new_list_name)
+                else:
+                    print("Creating new list type %s" % (new_list_name))
+
+                    list_type_id = self._create_new_list(old_attribute_type_name, attribute_.type_name)
+
+                    if list_type_id:
+                        print("Saving newly created list type %s (%d) as %s instead of type %s (%s)" % (new_list_name, list_type_id, attribute_.name, old_attribute_type_name, old_attribute_type_id))
+                        attribute_.set_type_id(list_type_id)
+                        attribute_.set_type_name(new_list_name)
+
+                    else :
+                        print "Can't create a new list type? This should NEVER happen!"
+
+
+
 
 def parse_type_data(data_type):
     my_types.append(MyDataType(data_type))
@@ -907,8 +1037,9 @@ if __name__ == "__main__":
         # print "\"\"\"\n\n"
 
         fw.write("""from sqlalchemy.ext.declarative import declarative_base
-    Base = declarative_base()
-    from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Boolean, ForeignKey
+Base = declarative_base()
+
+from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Boolean, ForeignKey
     
         """)
 
@@ -924,6 +1055,9 @@ if __name__ == "__main__":
         for class_ in my_classes:
             class_.resolve_many_constraints()
 
+        for type_ in my_types:
+            type_.resolve_many_constraints()
+
         # print "Done resolving x to many constraints"
 
         for class_ in my_classes:
@@ -932,11 +1066,12 @@ if __name__ == "__main__":
         for type_ in my_types:
             type_.resolve_type_ids()
 
-
+        fw.write("\n")
 
         for type_ in my_types:
             if isinstance(type_, MyEnumerationType) :
                 fw.write(repr(type_))
+                fw.write("\n")
 
         fw.write("\n")
 
